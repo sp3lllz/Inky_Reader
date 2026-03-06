@@ -9,11 +9,11 @@ A full-featured e-reader for the Pimoroni Inky Impression 4" seven-colour e-ink 
 
 ## Features
 
-- **Library browser** — scans a folder of `.txt` files and presents them as a scrollable list
-- **Paginated reading view** — clean serif text on white, with progress bar and page counter
-- **Automatic bookmarking** — saves your position on every page turn and restores it when you reopen
-- **Deep sleep** — suspends the Pi to save power; wakes on button press
-- **Simulation mode** — renders all screens as PNGs on any computer, no Pi required
+- **Library browser**  scans a folder of `.txt` files and presents them as a scrollable list
+- **Paginated reading view**  clean serif text on white, with progress bar and page counter
+- **Automatic bookmarking**  saves your position on every page turn and restores it when you reopen
+- **Deep sleep**  suspends the Pi to save power; wakes on button press
+- **Simulation mode**  renders all screens as PNGs on any computer, no Pi required
 
 ## Button Controls
 
@@ -37,7 +37,7 @@ A full-featured e-reader for the Pimoroni Inky Impression 4" seven-colour e-ink 
 
 ---
 
-## Installation — From Blank SD Card
+## Installation  From Blank SD Card
 
 ### 1. Flash Raspberry Pi OS
 
@@ -49,10 +49,10 @@ Download and install the **Raspberry Pi Imager** from [raspberrypi.com/software]
    - Lite is ideal since we don't need a desktop environment
 4. Click **Choose Storage** and select your SD card
 5. Click the **gear icon** (or press Ctrl+Shift+X) to open advanced options:
-   - **Enable SSH** — tick "Use password authentication"
-   - **Set username and password** — e.g. username `pi`, pick a password
-   - **Configure Wi-Fi** — enter your network name and password, set your country
-   - **Set locale** — choose your timezone and keyboard layout
+   - **Enable SSH**  tick "Use password authentication"
+   - **Set username and password**  e.g. username `pi`, pick a password
+   - **Configure Wi-Fi**  enter your network name and password, set your country
+   - **Set locale**  choose your timezone and keyboard layout
 6. Click **Write** and wait for it to finish
 
 ### 2. First Boot
@@ -68,7 +68,7 @@ ssh pi@raspberrypi.local
 
 ### 3. Run the Setup Script
 
-One command does everything — updates the system, enables SPI/I2C, installs all dependencies, downloads the e-reader, creates a systemd service, configures GPIO wake, and grabs a sample book:
+One command does everything  updates the system, enables SPI/I2C, installs all dependencies, downloads the e-reader, creates a systemd service, configures GPIO wake, and grabs a sample book:
 
 ```bash
 curl -sL https://raw.githubusercontent.com/sp3lllz/Inky_Reader/main/setup.sh | bash
@@ -90,7 +90,7 @@ The script will ask you to confirm before starting, and will offer to reboot at 
 > sudo systemctl start ereader
 > ```
 
-That's it — the e-reader is running. Add books via SCP from your main computer:
+That's it  the e-reader is running. Add books via SCP from your main computer:
 
 ```bash
 scp mybook.txt pi@raspberrypi.local:~/books/
@@ -192,7 +192,7 @@ The e-reader looks for `.txt` files in `~/books/` by default:
 mkdir -p ~/books
 ```
 
-You can grab public-domain books from [Project Gutenberg](https://www.gutenberg.org/) — download the **Plain Text UTF-8** versions:
+You can grab public-domain books from [Project Gutenberg](https://www.gutenberg.org/)  download the **Plain Text UTF-8** versions:
 
 ```bash
 cd ~/books
@@ -212,7 +212,7 @@ python3 ereader.py
 
 You should see the Library Browser appear on the e-ink screen. Press the physical buttons to navigate.
 
-> **Tip:** The Inky Impression 7-colour display takes about 30 seconds to fully refresh. This is normal for this type of e-ink panel — be patient after each button press.
+> **Tip:** The Inky Impression 7-colour display takes about 30 seconds to fully refresh. This is normal for this type of e-ink panel  be patient after each button press.
 
 ---
 
@@ -329,12 +329,12 @@ python3 ereader.py ~/books/ --simulate
 This generates numbered PNG files in the current directory:
 
 ```
-sim_000_browser.png    — Library browser
-sim_001_menu.png       — Main menu
-sim_002_page_0001.png  — First page of reading
-sim_003_page_0002.png  — Second page
-sim_004_page_0003.png  — Third page
-sim_005_sleep.png      — Sleep screen
+sim_000_browser.png     Library browser
+sim_001_menu.png        Main menu
+sim_002_page_0001.png   First page of reading
+sim_003_page_0002.png   Second page
+sim_004_page_0003.png   Third page
+sim_005_sleep.png       Sleep screen
 ```
 
 ---
@@ -372,7 +372,7 @@ sim_005_sleep.png      — Sleep screen
 
 **Font looks blocky or wrong**
 - Install fonts: `sudo apt install fonts-dejavu-core`
-- The app falls back to Pillow's built-in bitmap font if no TTF is found — it works, but looks rough
+- The app falls back to Pillow's built-in bitmap font if no TTF is found  it works, but looks rough
 
 **Suspend/wake not working**
 - Ensure the `gpio-shutdown` overlay is in `/boot/firmware/config.txt` and you've rebooted
@@ -396,7 +396,7 @@ A converter that turns DRM-free `.epub` files into clean `.txt` files ready to l
 pip install beautifulsoup4 lxml
 ```
 
-> Both are optional — the script falls back to a standard-library regex parser without them, but BS4 + lxml gives much better results.
+> Both are optional  the script falls back to a standard-library regex parser without them, but BS4 + lxml gives much better results.
 
 ### Usage
 
