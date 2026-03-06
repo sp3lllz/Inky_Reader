@@ -135,10 +135,10 @@ Transfer `ereader.py` from your computer using SCP. On your main machine run:
 scp ereader.py pi@raspberrypi.local:~/ereader/
 ```
 
-Or if you've put it in a Git repository:
+Or if clone the Git repository:
 
 ```bash
-git clone https://github.com/youruser/yourrepo.git ~/ereader
+git clone https://github.com/sp3lllz/Inky_Reader.git ~/ereader
 ```
 
 Either way, make the script executable:
