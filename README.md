@@ -341,6 +341,42 @@ sim_005_sleep.png      — Sleep screen
 - Check the path: by default it's `~/books/`, but you can pass a different directory
 - Press button C on the library screen to refresh
 
+## Companion Script: epub2txt.py
+
+A converter that turns DRM-free `.epub` files into clean `.txt` files ready to load onto the e-reader. Run this on your main PC.
+
+### Install (on your PC)
+
+```bash
+pip install beautifulsoup4 lxml
+```
+
+> Both are optional — the script falls back to a standard-library regex parser without them, but BS4 + lxml gives much better results.
+
+### Usage
+
+```bash
+# Single file
+python3 epub2txt.py book.epub
+
+# Multiple files
+python3 epub2txt.py book1.epub book2.epub
+
+# Every EPUB in a folder
+python3 epub2txt.py ~/Downloads/epubs/
+
+# Output to a specific directory
+python3 epub2txt.py book.epub -o ~/converted/
+
+# Convert and SCP straight to the Pi in one command
+python3 epub2txt.py book.epub --scp pi@raspberrypi.local:~/books/
+
+# Preview what would be converted without writing anything
+python3 epub2txt.py ~/Downloads/epubs/ --dry-run
+```
+
+The converter reads the EPUB's spine for correct chapter order, extracts text from each XHTML document, preserves paragraph breaks and section dividers, and prepends the title and author from the book's metadata.
+
 ---
 
 ## Licence
