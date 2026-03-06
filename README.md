@@ -1,4 +1,4 @@
-# Inky_Reader
+# Inky Impression 4" E-Reader
 
 A full-featured e-reader for the Pimoroni Inky Impression 4" seven-colour e-ink display, built with Python and Pillow.
 
@@ -65,6 +65,43 @@ Download and install the **Raspberry Pi Imager** from [raspberrypi.com/software]
 ```bash
 ssh pi@raspberrypi.local
 ```
+
+### 3. Run the Setup Script
+
+One command does everything — updates the system, enables SPI/I2C, installs all dependencies, downloads the e-reader, creates a systemd service, configures GPIO wake, and grabs a sample book:
+
+```bash
+curl -sL https://raw.githubusercontent.com/sp3lllz/Inky_Reader/main/setup.sh | bash
+```
+
+Or if you prefer to review it first:
+
+```bash
+wget -O setup.sh https://raw.githubusercontent.com/sp3lllz/Inky_Reader/main/setup.sh
+less setup.sh
+bash setup.sh
+```
+
+The script will ask you to confirm before starting, and will offer to reboot at the end to apply the SPI/I2C changes. After reboot the e-reader service starts automatically.
+
+> **Note:** If you haven't pushed the scripts to a GitHub repo yet, the setup script will still configure everything else and tell you to SCP the Python files across manually:
+> ```bash
+> scp ereader.py epub2txt.py pi@raspberrypi.local:~/ereader/
+> sudo systemctl start ereader
+> ```
+
+That's it — the e-reader is running. Add books via SCP from your main computer:
+
+```bash
+scp mybook.txt pi@raspberrypi.local:~/books/
+```
+
+---
+
+<details>
+<summary><strong>Manual installation (step by step)</strong></summary>
+
+If you'd rather do it by hand, or need to debug something the setup script didn't cover, here are the individual steps.
 
 ### 3. Update the System
 
@@ -135,7 +172,7 @@ Transfer `ereader.py` from your computer using SCP. On your main machine run:
 scp ereader.py pi@raspberrypi.local:~/ereader/
 ```
 
-Or if clone the Git repository:
+Or if you've put it in a Git repository:
 
 ```bash
 git clone https://github.com/sp3lllz/Inky_Reader.git ~/ereader
@@ -180,6 +217,8 @@ You should see the Library Browser appear on the e-ink screen. Press the physica
 ---
 
 ## Optional Setup
+
+> **Note:** The automated `setup.sh` script handles all of the following. These are documented here for reference or manual adjustment.
 
 ### Run on Boot with systemd
 
@@ -274,6 +313,8 @@ python3 ereader.py /media/usb/my-library/
 
 The directory will be created automatically if it doesn't exist.
 
+</details>
+
 ---
 
 ## Simulation Mode
@@ -303,7 +344,9 @@ sim_005_sleep.png      — Sleep screen
 ```
 ~/
 ├── ereader/
-│   └── ereader.py            # The application (single file)
+│   ├── ereader.py            # The e-reader application (runs on Pi)
+│   ├── epub2txt.py           # EPUB converter (runs on your PC or Pi)
+│   └── setup.sh              # Automated Pi setup script
 ├── books/
 │   ├── alice_in_wonderland.txt
 │   ├── pride_and_prejudice.txt
@@ -340,6 +383,8 @@ sim_005_sleep.png      — Sleep screen
 - Files must have a `.txt` extension
 - Check the path: by default it's `~/books/`, but you can pass a different directory
 - Press button C on the library screen to refresh
+
+---
 
 ## Companion Script: epub2txt.py
 
@@ -382,3 +427,5 @@ The converter reads the EPUB's spine for correct chapter order, extracts text fr
 ## Licence
 
 Published under the MIT Licence
+
+
