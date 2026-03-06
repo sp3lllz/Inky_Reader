@@ -345,4 +345,4 @@ sim_005_sleep.png      — Sleep screen
 
 ## Licence
 
-Do whatever you like with it. No warranty, no restrictions.
+Published under the MIT Licence
