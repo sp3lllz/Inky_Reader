@@ -15,15 +15,14 @@
 #
 # What this script does:
 #   1. Updates the system
-#   2. Enables SPI and I2C interfaces
+#   2. Enables SPI (with spi0-0cs overlay) and I2C interfaces
 #   3. Installs system dependencies and fonts
 #   4. Installs Python packages (inky, Pillow, RPi.GPIO)
-#   5. Downloads ereader.py and epub2txt.py
+#   5. Downloads ereader.py and epub2txt.py (600×400 optimized)
 #   6. Creates ~/books/ with a sample book from Project Gutenberg
 #   7. Sets up a systemd service for auto-start on boot
-#   8. Configures GPIO wake from suspend (optional)
-#   9. Adds passwordless sudo for suspend
-#  10. Reboots to apply SPI/I2C changes
+#   8. Removes GPIO shutdown overlay (prevents unwanted shutdowns)
+#   9. Reboots to apply SPI/I2C changes
 #
 # ============================================================================
 
@@ -150,7 +149,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Step 2: Enable SPI and I2C
+# Step 2: Enable SPI and I2C with proper overlay
 # ---------------------------------------------------------------------------
 
 step "Enabling SPI and I2C interfaces"
@@ -158,19 +157,33 @@ step "Enabling SPI and I2C interfaces"
 SPI_CHANGED=false
 I2C_CHANGED=false
 
-# Enable SPI
-info "Checking SPI interface..."
-if sudo raspi-config nonint get_spi | grep -q "1"; then
-    info "Enabling SPI..."
-    if sudo raspi-config nonint do_spi 0; then
-        SPI_CHANGED=true
-        ok "SPI enabled"
+BOOT_CONFIG="/boot/firmware/config.txt"
+# Older Pi OS uses /boot/config.txt
+if [[ ! -f "${BOOT_CONFIG}" ]]; then
+    BOOT_CONFIG="/boot/config.txt"
+fi
+
+# Enable SPI with spi0-0cs overlay to avoid GPIO conflicts
+info "Configuring SPI interface..."
+if [[ -f "${BOOT_CONFIG}" ]]; then
+    if grep -q "dtoverlay=spi0-0cs" "${BOOT_CONFIG}" 2>/dev/null; then
+        ok "SPI overlay already configured"
     else
-        fail "Failed to enable SPI"
-        exit 1
+        info "Adding SPI overlay to ${BOOT_CONFIG}..."
+        # Remove old SPI config if present
+        sudo sed -i '/^dtparam=spi=on/d' "${BOOT_CONFIG}" 2>/dev/null || true
+        # Add new overlay
+        if echo "" | sudo tee -a "${BOOT_CONFIG}" > /dev/null && \
+           echo "# Inky E-Reader: SPI with no chip select conflicts" | sudo tee -a "${BOOT_CONFIG}" > /dev/null && \
+           echo "dtoverlay=spi0-0cs" | sudo tee -a "${BOOT_CONFIG}" > /dev/null; then
+            SPI_CHANGED=true
+            ok "SPI overlay configured"
+        else
+            warn "Failed to add SPI overlay"
+        fi
     fi
 else
-    ok "SPI already enabled"
+    warn "Could not find boot config file"
 fi
 
 # Enable I2C
@@ -373,10 +386,10 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Step 8: Configure GPIO wake from suspend
+# Step 8: Cleanup old GPIO shutdown overlay (if present)
 # ---------------------------------------------------------------------------
 
-step "Configuring GPIO wake from suspend"
+step "Removing GPIO shutdown overlay (not needed)"
 
 BOOT_CONFIG="/boot/firmware/config.txt"
 # Older Pi OS uses /boot/config.txt
@@ -384,46 +397,20 @@ if [[ ! -f "${BOOT_CONFIG}" ]]; then
     BOOT_CONFIG="/boot/config.txt"
 fi
 
-if [[ ! -f "${BOOT_CONFIG}" ]]; then
-    warn "Could not find ${BOOT_CONFIG}"
-    info "You may need to manually add: dtoverlay=gpio-shutdown,gpio_pin=${WAKE_GPIO},active_low=1,gpio_pull=up"
-else
-    OVERLAY_LINE="dtoverlay=gpio-shutdown,gpio_pin=${WAKE_GPIO},active_low=1,gpio_pull=up"
-
+if [[ -f "${BOOT_CONFIG}" ]]; then
     if grep -q "gpio-shutdown" "${BOOT_CONFIG}" 2>/dev/null; then
-        ok "GPIO wake overlay already configured"
+        info "Removing old GPIO shutdown overlay..."
+        # Comment out or remove gpio-shutdown lines
+        sudo sed -i 's/^dtoverlay=gpio-shutdown/# dtoverlay=gpio-shutdown (disabled - causes unwanted shutdowns)/' "${BOOT_CONFIG}"
+        sudo sed -i '/Inky E-Reader: wake from suspend/s/^/# /' "${BOOT_CONFIG}"
+        ok "GPIO shutdown overlay disabled"
     else
-        info "Adding GPIO wake overlay to ${BOOT_CONFIG}..."
-        if echo "" | sudo tee -a "${BOOT_CONFIG}" > /dev/null && \
-           echo "# Inky E-Reader: wake from suspend on button A (GPIO ${WAKE_GPIO})" | sudo tee -a "${BOOT_CONFIG}" > /dev/null && \
-           echo "${OVERLAY_LINE}" | sudo tee -a "${BOOT_CONFIG}" > /dev/null; then
-            ok "Added gpio-shutdown overlay (GPIO ${WAKE_GPIO})"
-        else
-            warn "Failed to add GPIO wake overlay"
-        fi
+        ok "No GPIO shutdown overlay found (good)"
     fi
 fi
 
-# ---------------------------------------------------------------------------
-# Step 9: Passwordless sudo for suspend
-# ---------------------------------------------------------------------------
-
-step "Configuring passwordless suspend"
-
-SUDOERS_FILE="/etc/sudoers.d/ereader"
-
-if [[ -f "${SUDOERS_FILE}" ]]; then
-    ok "Sudoers rule already exists"
-else
-    info "Adding sudoers rule for passwordless suspend..."
-    if echo "${EREADER_USER} ALL=(ALL) NOPASSWD: /usr/bin/systemctl suspend" | sudo tee "${SUDOERS_FILE}" > /dev/null && \
-       sudo chmod 0440 "${SUDOERS_FILE}"; then
-        ok "Passwordless suspend configured for ${EREADER_USER}"
-    else
-        warn "Failed to configure passwordless suspend"
-        info "You may need to enter password when using sleep mode"
-    fi
-fi
+# Note: We don't configure passwordless suspend since the e-reader
+# now uses a simple sleep screen instead of system suspend
 
 # ---------------------------------------------------------------------------
 # Summary
@@ -438,7 +425,7 @@ echo -e "  ${BOLD}E-reader:${NC}     ${INSTALL_DIR}/ereader.py"
 echo -e "  ${BOLD}EPUB converter:${NC} ${INSTALL_DIR}/epub2txt.py"
 echo -e "  ${BOLD}Books folder:${NC}  ${BOOKS_DIR}/"
 echo -e "  ${BOLD}Service:${NC}       ereader.service (enabled, starts on boot)"
-echo -e "  ${BOLD}Wake button:${NC}   GPIO ${WAKE_GPIO} (Button A)"
+echo -e "  ${BOLD}Display:${NC}       Optimized for 600×400 Inky Impression"
 echo ""
 
 if [[ "${download_ok}" == false ]]; then
@@ -448,6 +435,12 @@ if [[ "${download_ok}" == false ]]; then
     echo ""
 fi
 
+echo -e "  ${BOLD}Button Controls (when reading):${NC}"
+echo -e "    Button A (GPIO 5)   - Next page"
+echo -e "    Button B (GPIO 6)   - Previous page"
+echo -e "    Button C (GPIO 16)  - Menu"
+echo -e "    Button D (GPIO 24)  - Full refresh (clear ghosting)"
+echo ""
 echo -e "  ${BOLD}Adding books from your PC:${NC}"
 echo -e "    scp mybook.txt ${EREADER_USER}@$(hostname).local:${BOOKS_DIR}/"
 echo ""
