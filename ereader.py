@@ -16,10 +16,17 @@ Usage
 
 Button controls (active-low, BCM GPIO)
 --------------------------------------
-    A (GPIO 5)   Scroll / page up      ◀
-    D (GPIO 24)  Scroll / page down    ▶
-    B (GPIO 6)   Confirm / open menu
-    C (GPIO 16)  Context action (refresh library / back to reading)
+    Library Browser:
+        A (GPIO 5)   Scroll up            ◀
+        D (GPIO 24)  Scroll down          ▶
+        B (GPIO 6)   Select/Open book
+        C (GPIO 16)  Refresh library
+
+    Reading View:
+        A (GPIO 5)   Next page            ▶
+        B (GPIO 6)   Previous page        ◀
+        C (GPIO 16)  Open menu
+        D (GPIO 24)  Full refresh (clears ghosting)
 
 Screens
 -------
@@ -150,7 +157,7 @@ def load_fonts() -> dict:
         "heading_small": _find_font(_BOLD_CANDIDATES, 16),
         "card_title": _find_font(_BOLD_CANDIDATES, 18),
         "card_sub": _find_font(_SERIF_CANDIDATES, 14),
-        "hint": _find_font(_SERIF_CANDIDATES, 12),
+        "hint": _find_font(_BOLD_CANDIDATES, 14),
         "sleep_big": _find_font(_BOLD_CANDIDATES, 28),
         "sleep_sub": _find_font(_SERIF_CANDIDATES, 16),
     }
@@ -427,7 +434,7 @@ def render_browser(books: list[dict], selected: int, scroll_offset: int,
         draw_scrollbar(draw, len(books), max_visible, scroll_offset,
                        y_start, y_start + max_visible * (CARD_H + CARD_GAP))
 
-    draw_hint_bar(draw, fonts, "[A]▲  [D]▼  [B]Open  [C]Refresh")
+    draw_hint_bar(draw, fonts, "[D]▼  [C]Refresh  [B]Open  [A]▲")
     return img
 
 
@@ -471,7 +478,7 @@ def render_menu(book_title: str, current_page: int, total_pages: int,
         draw.text((CARD_X + 16, card_y + 40), sub,
                   fill=sub_col, font=fonts["card_sub"])
 
-    draw_hint_bar(draw, fonts, "[A]▲  [D]▼  [B]Select  [C]Back to reading")
+    draw_hint_bar(draw, fonts, "[D]▼  [C]Back to reading  [B]Select  [A]▲")
     return img
 
 
@@ -514,11 +521,11 @@ def render_reading(page_lines: list[str], page_num: int, total_pages: int,
     label_y = pb_y + PROGRESS_BAR_H + 4
     pct_int = int(100 * page_num / max(total_pages, 1))
     right_label = f"p.{page_num}/{total_pages}  {pct_int}%"
-    left_label = "[A]◀  [D]▶  [B]Menu"
+    left_label = "[D]Refresh  [C]Menu  [B]◀  [A]▶"
     draw.text((pb_x0, label_y), left_label,
-              fill="#999999", font=fonts["hint"])
+              fill="#333333", font=fonts["hint"])
     draw.text((pb_x1, label_y), right_label,
-              fill="#999999", font=fonts["hint"], anchor="ra")
+              fill="#333333", font=fonts["hint"], anchor="ra")
 
     return img
 
@@ -563,31 +570,70 @@ class DisplayDriver:
         self.simulate = simulate
         self._frame = 0
         self._screen_label = ""
+        self._last_image_hash = None  # Track last image to skip duplicate refreshes
         self.inky = None
+        self.supports_partial = False  # Track if partial refresh is supported
 
         if not simulate:
             try:
                 from inky.auto import auto
                 self.inky = auto()
                 self.inky.set_border(self.inky.BLACK)
+
+                # Check if partial refresh is supported
+                if hasattr(self.inky, 'set_partial_mode'):
+                    self.supports_partial = True
+                    print("[info] Partial refresh mode available")
             except Exception as exc:
                 print(f"[error] Could not init Inky display: {exc}", file=sys.stderr)
                 print("[info]  Falling back to simulation mode.", file=sys.stderr)
                 self.simulate = True
 
-    def show(self, img: Image.Image, label: str = "screen"):
-        """Display or save the portrait image."""
+    def show(self, img: Image.Image, label: str = "screen", force: bool = False, partial: bool = False):
+        """Display or save the portrait image.
+
+        Args:
+            img: Image to display
+            label: Label for simulation mode filename
+            force: Force refresh even if image unchanged
+            partial: Use fast partial refresh (reading pages only)
+        """
         self._screen_label = label
+
+        # Calculate hash of image to detect duplicates
+        img_hash = hash(img.tobytes())
+
         if self.simulate:
             fname = f"sim_{self._frame:03d}_{label}.png"
             img.save(fname)
             print(f"[sim] Saved {fname}")
             self._frame += 1
         else:
+            # Skip refresh if image hasn't changed (unless forced)
+            if not force and img_hash == self._last_image_hash:
+                print("[info] Skipping refresh - no change detected")
+                return
+
+            self._last_image_hash = img_hash
+
             # Rotate −90° from portrait (400×600) to landscape (600×400)
             rotated = img.rotate(90, expand=True)
-            self.inky.set_image(rotated)
-            self.inky.show()
+
+            # Convert to black & white for faster refresh
+            bw_image = rotated.convert('L')  # Convert to grayscale first
+
+            self.inky.set_image(bw_image, saturation=0.0)  # Black & white mode
+
+            # Use partial refresh for reading pages if supported
+            if partial and self.supports_partial:
+                try:
+                    self.inky.show(partial_update=True)
+                    print("[info] Partial refresh used")
+                except:
+                    # Fall back to full refresh if partial fails
+                    self.inky.show()
+            else:
+                self.inky.show()
 
 
 # ---------------------------------------------------------------------------
@@ -671,6 +717,10 @@ class EReaderApp:
         self.book_pages: list[list[str]] = []
         self.current_page = 1
 
+        # Pre-rendering cache for faster page turns
+        self.prerendered_page: int | None = None
+        self.prerendered_image: Image.Image | None = None
+
         # Ensure books directory exists
         Path(self.books_dir).mkdir(parents=True, exist_ok=True)
 
@@ -682,6 +732,10 @@ class EReaderApp:
 
     def _load_book(self, path: str):
         """Load and paginate a .txt book file."""
+        # Clear pre-render cache when loading new book
+        self.prerendered_page = None
+        self.prerendered_image = None
+
         text = Path(path).read_text(encoding="utf-8", errors="replace")
         usable_w = WIDTH - 2 * READ_MARGIN_X
         line_h = _font_line_height(self.fonts["body"]) + LINE_SPACING
@@ -719,15 +773,46 @@ class EReaderApp:
                           self.menu_sel, self.fonts)
         self.display.show(img, "menu")
 
-    def _show_reading(self):
-        page_idx = self.current_page - 1
-        if 0 <= page_idx < len(self.book_pages):
-            lines = self.book_pages[page_idx]
+    def _show_reading(self, partial: bool = True):
+        """Show current reading page.
+
+        Args:
+            partial: Use fast partial refresh (default True for reading)
+        """
+        # Check if we have a pre-rendered image for this page
+        if self.prerendered_page == self.current_page and self.prerendered_image:
+            print(f"[info] Using pre-rendered page {self.current_page}")
+            img = self.prerendered_image
+            # Clear cache after use
+            self.prerendered_page = None
+            self.prerendered_image = None
         else:
-            lines = ["[Page out of range]"]
-        total = len(self.book_pages)
-        img = render_reading(lines, self.current_page, total, self.fonts)
-        self.display.show(img, f"page_{self.current_page:04d}")
+            # Render normally
+            page_idx = self.current_page - 1
+            if 0 <= page_idx < len(self.book_pages):
+                lines = self.book_pages[page_idx]
+            else:
+                lines = ["[Page out of range]"]
+            total = len(self.book_pages)
+            img = render_reading(lines, self.current_page, total, self.fonts)
+
+        # Display the image
+        self.display.show(img, f"page_{self.current_page:04d}", partial=partial)
+
+        # Pre-render next page in background (if not at end)
+        if not self.simulate and self.current_page < len(self.book_pages):
+            self._prerender_next_page()
+
+    def _prerender_next_page(self):
+        """Pre-render the next page for faster page turns."""
+        next_page = self.current_page + 1
+        if next_page <= len(self.book_pages):
+            page_idx = next_page - 1
+            lines = self.book_pages[page_idx]
+            total = len(self.book_pages)
+            print(f"[info] Pre-rendering page {next_page} in background...")
+            self.prerendered_image = render_reading(lines, next_page, total, self.fonts)
+            self.prerendered_page = next_page
 
     def _show_sleep(self):
         img = render_sleep(self.book_title, self.fonts)
@@ -771,24 +856,26 @@ class EReaderApp:
             return
 
         btn = self.input.wait_for_button()
+        changed = False
 
         if btn == BTN_A:  # Scroll up
             if self.browser_sel > 0:
                 self.browser_sel -= 1
                 if self.browser_sel < self.browser_scroll:
                     self.browser_scroll = self.browser_sel
+                changed = True
         elif btn == BTN_D:  # Scroll down
             if self.browser_sel < len(self.books) - 1:
                 self.browser_sel += 1
                 if self.browser_sel >= self.browser_scroll + self.browser_visible:
                     self.browser_scroll = self.browser_sel - self.browser_visible + 1
+                changed = True
         elif btn == BTN_B:  # Open
             if self.books:
                 self._load_book(self.books[self.browser_sel]["path"])
-                self.screen = SCREEN_MENU
-                self.menu_sel = 0
+                self.screen = SCREEN_READING  # Go directly to reading
         elif btn == BTN_C:  # Refresh
-            pass  # will rescan at top of loop
+            changed = True  # will rescan at top of loop
 
     def _handle_menu(self):
         total = len(self.book_pages)
@@ -818,6 +905,9 @@ class EReaderApp:
             elif self.menu_sel == 2:  # Start from Beginning
                 self.current_page = 1
                 self._save_current()
+                # Clear cache when jumping to beginning
+                self.prerendered_page = None
+                self.prerendered_image = None
                 self.screen = SCREEN_READING
             elif self.menu_sel == 3:  # Sleep
                 self._do_sleep()
@@ -830,17 +920,24 @@ class EReaderApp:
 
         btn = self.input.wait_for_button()
 
-        if btn == BTN_A:  # Previous page
-            if self.current_page > 1:
-                self.current_page -= 1
-                self._save_current()
-        elif btn == BTN_D:  # Next page
+        if btn == BTN_A:  # Next page
             if self.current_page < len(self.book_pages):
                 self.current_page += 1
                 self._save_current()
-        elif btn == BTN_B:  # Menu
+                # Cache will be used automatically if available
+        elif btn == BTN_B:  # Previous page
+            if self.current_page > 1:
+                self.current_page -= 1
+                self._save_current()
+                # Clear cache since we're going backwards
+                self.prerendered_page = None
+                self.prerendered_image = None
+        elif btn == BTN_C:  # Menu
             self.screen = SCREEN_MENU
             self.menu_sel = 0
+        elif btn == BTN_D:  # Full refresh (clear ghosting)
+            print("[info] Forcing full refresh to clear ghosting")
+            self._show_reading(partial=False)  # Full refresh, don't advance page
 
     def run(self):
         """Main event loop."""
