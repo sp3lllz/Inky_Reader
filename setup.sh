@@ -134,11 +134,20 @@ fi
 
 step "Updating system packages"
 
-sudo apt-get update -qq
-ok "Package lists updated"
+info "Updating package lists..."
+if sudo apt-get update; then
+    ok "Package lists updated"
+else
+    fail "Failed to update package lists"
+    exit 1
+fi
 
-sudo apt-get upgrade -y -qq
-ok "System packages upgraded"
+info "Upgrading system packages (this may take a few minutes)..."
+if sudo apt-get upgrade -y; then
+    ok "System packages upgraded"
+else
+    warn "Package upgrade had issues, but continuing..."
+fi
 
 # ---------------------------------------------------------------------------
 # Step 2: Enable SPI and I2C
@@ -150,19 +159,30 @@ SPI_CHANGED=false
 I2C_CHANGED=false
 
 # Enable SPI
+info "Checking SPI interface..."
 if sudo raspi-config nonint get_spi | grep -q "1"; then
-    sudo raspi-config nonint do_spi 0
-    SPI_CHANGED=true
-    ok "SPI enabled"
+    info "Enabling SPI..."
+    if sudo raspi-config nonint do_spi 0; then
+        SPI_CHANGED=true
+        ok "SPI enabled"
+    else
+        fail "Failed to enable SPI"
+        exit 1
+    fi
 else
     ok "SPI already enabled"
 fi
 
 # Enable I2C
+info "Checking I2C interface..."
 if sudo raspi-config nonint get_i2c | grep -q "1"; then
-    sudo raspi-config nonint do_i2c 0
-    I2C_CHANGED=true
-    ok "I2C enabled"
+    info "Enabling I2C..."
+    if sudo raspi-config nonint do_i2c 0; then
+        I2C_CHANGED=true
+        ok "I2C enabled"
+    else
+        warn "Failed to enable I2C (not critical)"
+    fi
 else
     ok "I2C already enabled"
 fi
@@ -188,8 +208,15 @@ PACKAGES=(
     wget
 )
 
-sudo apt-get install -y -qq "${PACKAGES[@]}"
-ok "System packages installed"
+info "Installing: ${PACKAGES[*]}"
+info "This may take a few minutes..."
+if sudo apt-get install -y "${PACKAGES[@]}"; then
+    ok "System packages installed"
+else
+    fail "Failed to install system packages"
+    info "Try running manually: sudo apt-get install -y ${PACKAGES[*]}"
+    exit 1
+fi
 
 # ---------------------------------------------------------------------------
 # Step 4: Install Python packages
@@ -197,13 +224,22 @@ ok "System packages installed"
 
 step "Installing Python packages"
 
-pip install --break-system-packages --quiet inky[rpi] Pillow RPi.GPIO
-ok "inky, Pillow, RPi.GPIO installed"
+info "Installing inky[rpi], Pillow, RPi.GPIO..."
+if pip install --break-system-packages inky[rpi] Pillow RPi.GPIO; then
+    ok "inky, Pillow, RPi.GPIO installed"
+else
+    fail "Failed to install Python packages"
+    info "Try running manually: pip install --break-system-packages inky[rpi] Pillow RPi.GPIO"
+    exit 1
+fi
 
 # Also install epub2txt dependencies so the Pi can convert locally if wanted
-pip install --break-system-packages --quiet beautifulsoup4 lxml 2>/dev/null && \
-    ok "beautifulsoup4, lxml installed (for epub2txt)" || \
+info "Installing beautifulsoup4, lxml (for epub2txt)..."
+if pip install --break-system-packages beautifulsoup4 lxml 2>/dev/null; then
+    ok "beautifulsoup4, lxml installed (for epub2txt)"
+else
     warn "beautifulsoup4/lxml install failed (epub2txt will use fallback parser)"
+fi
 
 # ---------------------------------------------------------------------------
 # Step 5: Download e-reader scripts
@@ -251,7 +287,19 @@ if [[ "${download_ok}" == false ]]; then
     echo ""
 fi
 
-chmod +x "${INSTALL_DIR}"/*.py 2>/dev/null || true
+if [[ -f "${INSTALL_DIR}/ereader.py" ]]; then
+    chmod +x "${INSTALL_DIR}/ereader.py"
+    ok "ereader.py is ready"
+else
+    warn "ereader.py not found at ${INSTALL_DIR}/ereader.py"
+fi
+
+if [[ -f "${INSTALL_DIR}/epub2txt.py" ]]; then
+    chmod +x "${INSTALL_DIR}/epub2txt.py"
+    ok "epub2txt.py is ready"
+else
+    warn "epub2txt.py not found at ${INSTALL_DIR}/epub2txt.py"
+fi
 
 # ---------------------------------------------------------------------------
 # Step 6: Download a sample book
@@ -264,8 +312,9 @@ SAMPLE_BOOK="${BOOKS_DIR}/alice_in_wonderland.txt"
 if [[ -f "${SAMPLE_BOOK}" ]]; then
     ok "Sample book already exists"
 else
-    if wget -q --timeout=15 -O "${SAMPLE_BOOK}" \
-        "https://www.gutenberg.org/cache/epub/11/pg11.txt" 2>/dev/null; then
+    info "Downloading Alice in Wonderland from Project Gutenberg..."
+    if wget --timeout=15 -O "${SAMPLE_BOOK}" \
+        "https://www.gutenberg.org/cache/epub/11/pg11.txt" 2>&1 | grep -v "^--"; then
         SIZE=$(du -h "${SAMPLE_BOOK}" | cut -f1)
         ok "Downloaded Alice in Wonderland (${SIZE})"
     else
@@ -282,7 +331,8 @@ step "Setting up auto-start service"
 
 SERVICE_FILE="/etc/systemd/system/ereader.service"
 
-sudo tee "${SERVICE_FILE}" > /dev/null << UNIT
+info "Creating systemd service file..."
+if sudo tee "${SERVICE_FILE}" > /dev/null << UNIT
 [Unit]
 Description=Inky Impression E-Reader
 After=multi-user.target
@@ -300,11 +350,28 @@ StandardError=journal
 [Install]
 WantedBy=multi-user.target
 UNIT
+then
+    ok "Service file created"
+else
+    fail "Failed to create service file"
+    exit 1
+fi
 
-sudo systemctl daemon-reload
-sudo systemctl enable ereader.service
-ok "ereader.service created and enabled"
-info "It will start automatically on next boot"
+info "Reloading systemd daemon..."
+if sudo systemctl daemon-reload; then
+    ok "Systemd daemon reloaded"
+else
+    fail "Failed to reload systemd"
+    exit 1
+fi
+
+info "Enabling ereader.service..."
+if sudo systemctl enable ereader.service; then
+    ok "ereader.service enabled"
+    info "It will start automatically on next boot"
+else
+    warn "Failed to enable service (you can try manually later)"
+fi
 
 # ---------------------------------------------------------------------------
 # Step 8: Configure GPIO wake from suspend
@@ -318,16 +385,24 @@ if [[ ! -f "${BOOT_CONFIG}" ]]; then
     BOOT_CONFIG="/boot/config.txt"
 fi
 
-OVERLAY_LINE="dtoverlay=gpio-shutdown,gpio_pin=${WAKE_GPIO},active_low=1,gpio_pull=up"
-
-if grep -q "gpio-shutdown" "${BOOT_CONFIG}" 2>/dev/null; then
-    ok "GPIO wake overlay already configured"
+if [[ ! -f "${BOOT_CONFIG}" ]]; then
+    warn "Could not find ${BOOT_CONFIG}"
+    info "You may need to manually add: dtoverlay=gpio-shutdown,gpio_pin=${WAKE_GPIO},active_low=1,gpio_pull=up"
 else
-    echo "" | sudo tee -a "${BOOT_CONFIG}" > /dev/null
-    echo "# Inky E-Reader: wake from suspend on button A (GPIO ${WAKE_GPIO})" | \
-        sudo tee -a "${BOOT_CONFIG}" > /dev/null
-    echo "${OVERLAY_LINE}" | sudo tee -a "${BOOT_CONFIG}" > /dev/null
-    ok "Added gpio-shutdown overlay (GPIO ${WAKE_GPIO}) to ${BOOT_CONFIG}"
+    OVERLAY_LINE="dtoverlay=gpio-shutdown,gpio_pin=${WAKE_GPIO},active_low=1,gpio_pull=up"
+
+    if grep -q "gpio-shutdown" "${BOOT_CONFIG}" 2>/dev/null; then
+        ok "GPIO wake overlay already configured"
+    else
+        info "Adding GPIO wake overlay to ${BOOT_CONFIG}..."
+        if echo "" | sudo tee -a "${BOOT_CONFIG}" > /dev/null && \
+           echo "# Inky E-Reader: wake from suspend on button A (GPIO ${WAKE_GPIO})" | sudo tee -a "${BOOT_CONFIG}" > /dev/null && \
+           echo "${OVERLAY_LINE}" | sudo tee -a "${BOOT_CONFIG}" > /dev/null; then
+            ok "Added gpio-shutdown overlay (GPIO ${WAKE_GPIO})"
+        else
+            warn "Failed to add GPIO wake overlay"
+        fi
+    fi
 fi
 
 # ---------------------------------------------------------------------------
@@ -341,10 +416,14 @@ SUDOERS_FILE="/etc/sudoers.d/ereader"
 if [[ -f "${SUDOERS_FILE}" ]]; then
     ok "Sudoers rule already exists"
 else
-    echo "${EREADER_USER} ALL=(ALL) NOPASSWD: /usr/bin/systemctl suspend" | \
-        sudo tee "${SUDOERS_FILE}" > /dev/null
-    sudo chmod 0440 "${SUDOERS_FILE}"
-    ok "Passwordless suspend configured for ${EREADER_USER}"
+    info "Adding sudoers rule for passwordless suspend..."
+    if echo "${EREADER_USER} ALL=(ALL) NOPASSWD: /usr/bin/systemctl suspend" | sudo tee "${SUDOERS_FILE}" > /dev/null && \
+       sudo chmod 0440 "${SUDOERS_FILE}"; then
+        ok "Passwordless suspend configured for ${EREADER_USER}"
+    else
+        warn "Failed to configure passwordless suspend"
+        info "You may need to enter password when using sleep mode"
+    fi
 fi
 
 # ---------------------------------------------------------------------------
