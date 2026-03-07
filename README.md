@@ -29,7 +29,7 @@ A full-featured e-reader for the Pimoroni Inky Impression 4" seven-colour e-ink 
 ## What You'll Need
 
 - Raspberry Pi (Zero 2 W, 3, 4, or 5)
-- Pimoroni Inky Impression 4" (640×400, 7-colour)
+- Pimoroni Inky Impression 4" (600×400, 7-colour)
 - microSD card (8 GB or larger)
 - Power supply for your Pi
 - Another computer to flash the SD card

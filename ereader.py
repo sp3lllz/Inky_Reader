@@ -4,7 +4,7 @@ Inky Impression 4" E-Reader
 ============================
 
 A full-featured e-reader for the Pimoroni Inky Impression 4" seven-colour
-e-ink display (640×400) attached to a Raspberry Pi.
+e-ink display (600×400) attached to a Raspberry Pi.
 
 Usage
 -----
@@ -59,9 +59,9 @@ from PIL import Image, ImageDraw, ImageFont
 # Constants
 # ---------------------------------------------------------------------------
 
-# Portrait dimensions (we render at 400×640 then rotate −90° for the display)
+# Portrait dimensions (we render at 400×600 then rotate −90° for the display)
 WIDTH = 400
-HEIGHT = 640
+HEIGHT = 600
 
 # Screen states
 SCREEN_BROWSER = "SCREEN_BROWSER"
@@ -584,7 +584,7 @@ class DisplayDriver:
             print(f"[sim] Saved {fname}")
             self._frame += 1
         else:
-            # Rotate −90° from portrait (400×640) to landscape (640×400)
+            # Rotate −90° from portrait (400×600) to landscape (600×400)
             rotated = img.rotate(90, expand=True)
             self.inky.set_image(rotated)
             self.inky.show()
