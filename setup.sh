@@ -200,7 +200,6 @@ PACKAGES=(
     python3-numpy
     libopenjp2-7
     libtiff6
-    libatlas-base-dev
     fonts-dejavu-core
     fonts-freefont-ttf
     fonts-liberation
