@@ -76,20 +76,20 @@ BTN_C = 16
 BTN_D = 24
 ALL_BUTTONS = (BTN_A, BTN_B, BTN_C, BTN_D)
 
-# Colour palette
-COL_BG_DARK = "#161616"
-COL_CARD = "#2c2c2c"
-COL_CARD_SEL = "#ffffff"
-COL_TEXT_LIGHT = "#ffffff"
-COL_TEXT_DARK = "#111111"
-COL_TEXT_MID = "#888888"
-COL_ACCENT = "#bbbbbb"
+# Colour palette (inverted for faster e-ink refresh)
+COL_BG_DARK = "#ffffff"  # Light background for menus
+COL_CARD = "#f0f0f0"  # Light gray cards
+COL_CARD_SEL = "#333333"  # Dark selected card (inverted)
+COL_TEXT_LIGHT = "#000000"  # Dark text on light background (inverted)
+COL_TEXT_DARK = "#000000"  # Dark text
+COL_TEXT_MID = "#555555"  # Mid gray text
+COL_ACCENT = "#666666"  # Dark accent
 COL_READING_BG = "#ffffff"
 COL_READING_TEXT = "#000000"
-COL_DIVIDER = "#444444"
-COL_PROGRESS_BG = "#333333"
-COL_PROGRESS_FILL = "#999999"
-COL_SEL_BAR = "#6699ff"
+COL_DIVIDER = "#cccccc"  # Light divider
+COL_PROGRESS_BG = "#dddddd"  # Light progress background
+COL_PROGRESS_FILL = "#666666"  # Dark progress fill
+COL_SEL_BAR = "#4477dd"  # Blue selection bar
 
 # Layout
 MARGIN_X = 24
@@ -745,17 +745,11 @@ class EReaderApp:
         self._save_current()
         self._show_sleep()
 
+        # Suspend disabled - just show sleep screen and wait for button press
         if not self.simulate:
-            try:
-                subprocess.run(["sudo", "systemctl", "suspend"],
-                               timeout=10, check=True)
-                # After resume, wait for a deliberate button press
-                time.sleep(0.5)  # brief settling time
-                self.input.wait_any_press()
-            except Exception as exc:
-                print(f"[warn] Suspend failed ({exc}), waiting for button press…",
-                      file=sys.stderr)
-                self.input.wait_any_press()
+            print("[info] Sleep screen shown. Press any button to wake.")
+            time.sleep(0.5)  # brief settling time
+            self.input.wait_any_press()
 
         # Return to menu
         self.screen = SCREEN_MENU
